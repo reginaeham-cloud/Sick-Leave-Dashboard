@@ -6,10 +6,10 @@
 //   Modellierung → Neue Tabelle → Measures = {}
 // Alle Measures dort als "Neues Measure" einfügen.
 //
-// Datenmodell-Beziehungen (n:1, alle aktiv):
-//   SickLeave_Data[Country + Year + Period] → TargetHours[Country + Year + Period]
-//   SickLeave_Data[Country + Year]          → Benchmark[Country + Year]
-//   SickLeave_Data[Date]                    → DimDate[Date]
+// Datenmodell-Beziehungen:
+//   SickLeave_Data ↔ TargetHours  → KEINE Beziehung (LOOKUPVALUE über Country+Year+Period)
+//   SickLeave_Data ↔ Benchmark    → KEINE Beziehung (LOOKUPVALUE über Country+Year)
+//   SickLeave_Data ↔ DimDate      → optional, über Date (n:1)
 //
 // LIMITATION Bradford Factor:
 //   TC (Teilzeit-korrigierter Headcount) wird als HC angenommen,

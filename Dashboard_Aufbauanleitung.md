@@ -14,23 +14,19 @@ Version 2.0 | Stand: Juni 2026
 | `Benchmark` | Absent Days of Employee Benchmark.csv | Benchmark-Krankentage je MA auf Länderebene |
 | `DimDate` | Power Query generiert | Kalender-Hilfstabelle für Zeitintelligenz |
 
-### Beziehungen (Sternschema)
+### Beziehungen
 
 ```
-SickLeave_Data  →  TargetHours
-  Country            Country
-  Year          n:1  Year
-  Period             Period
-
-SickLeave_Data  →  Benchmark
-  Country       n:1  Country
-  Year               Year
-
-SickLeave_Data  →  DimDate
-  Date          n:1  Date
+SickLeave_Data  →  TargetHours    KEINE Beziehung
+SickLeave_Data  →  Benchmark      KEINE Beziehung
+SickLeave_Data  →  DimDate        optional, über Date (n:1)
 ```
 
-Alle Beziehungen: **aktiv**, **einfache Filterrichtung** (TargetHours/Benchmark → SickLeave_Data).
+**Warum keine Beziehung zu TargetHours und Benchmark?**
+Beide Tabellen haben keinen eindeutigen Primärschlüssel auf einer einzelnen Spalte –
+`Country` allein ist nicht eindeutig (z.B. „Land 1" erscheint für H1 2025, H2 2025, H1 2026).
+Power BI unterstützt keine Composite-Key-Beziehungen. Stattdessen verwenden alle
+Measures `LOOKUPVALUE()` mit Country + Year + Period als Suchschlüssel.
 
 > **Bekannte Limitation:** Da kein separater Teilzeit-korrigierter Headcount (TC) in den
 > Quelldaten vorhanden ist, wird **TC = HC** angenommen. Dies gilt insbesondere für den
@@ -56,8 +52,8 @@ Alle Beziehungen: **aktiv**, **einfache Filterrichtung** (TargetHours/Benchmark 
 ## 3. Datenmodell konfigurieren
 
 1. **Modellansicht** öffnen
-2. Beziehungen gemäß Diagramm oben ziehen
-3. Sternschema prüfen: `SickLeave_Data` in der Mitte
+2. Beziehungen zwischen `SickLeave_Data` ↔ `TargetHours` und `SickLeave_Data` ↔ `Benchmark` **nicht anlegen** – Measures nutzen `LOOKUPVALUE()`
+3. Optional: Beziehung `SickLeave_Data[Date]` → `DimDate[Date]` (n:1) anlegen
 4. Neue Tabelle für Measures anlegen:
    ```
    Modellierung → Neue Tabelle → Measures = {}
