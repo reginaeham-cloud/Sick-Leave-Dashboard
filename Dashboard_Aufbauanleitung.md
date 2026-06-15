@@ -1,166 +1,233 @@
 # Sick Leave Dashboard – Power BI Aufbauanleitung
-
-## Datenmodell
-
-### Tabellen & Beziehungen
-
-```
-SickLeave_Data  ──── TargetHours
-  Country       →→→   Country
-  Year          →→→   Year
-  Period        →→→   Period
-
-SickLeave_Data  ──── Benchmark
-  Country       →→→   Country
-  Year          →→→   Year
-
-DimDate         ──── SickLeave_Data
-  Date          →→→   Date
-```
-
-**Kardinalitäten:** Alle Beziehungen n:1 (SickLeave_Data ist die Faktentabelle).
+Version 2.0 | Stand: Juni 2026
 
 ---
 
-## Schritt-für-Schritt Aufbau
+## 1. Datenmodell
 
-### 1. Daten laden (Power Query)
+### Tabellen
 
-1. Power BI Desktop öffnen → **Daten abrufen → Ordner**
-2. Den Ordner mit den CSV-Dateien auswählen
-3. Im erweiterten Editor den Code aus `PowerQuery_M_Code.pq` einfügen
-4. Vier Queries erstellen: `SickLeave_Data`, `TargetHours`, `Benchmark`, `DimDate`
-5. Pfade in den Queries anpassen (Suche nach `C:\DeinPfad\`)
+| Tabelle | Quelle | Beschreibung |
+|---------|--------|--------------|
+| `SickLeave_Data` | Land 1/2/3.csv | Faktentabelle – Abwesenheitsstunden je Dealership, Halbjahr |
+| `TargetHours` | Master_Target Hours.csv | Planstunden – Arbeitstage & Tagesarbeitszeit je Land/Jahr/Periode |
+| `Benchmark` | Absent Days of Employee Benchmark.csv | Benchmark-Krankentage je MA auf Länderebene |
+| `DimDate` | Power Query generiert | Kalender-Hilfstabelle für Zeitintelligenz |
 
-### 2. Datenmodell konfigurieren
+### Beziehungen (Sternschema)
+
+```
+SickLeave_Data  →  TargetHours
+  Country            Country
+  Year          n:1  Year
+  Period             Period
+
+SickLeave_Data  →  Benchmark
+  Country       n:1  Country
+  Year               Year
+
+SickLeave_Data  →  DimDate
+  Date          n:1  Date
+```
+
+Alle Beziehungen: **aktiv**, **einfache Filterrichtung** (TargetHours/Benchmark → SickLeave_Data).
+
+> **Bekannte Limitation:** Da kein separater Teilzeit-korrigierter Headcount (TC) in den
+> Quelldaten vorhanden ist, wird **TC = HC** angenommen. Dies gilt insbesondere für den
+> Bradford Factor. Bei hohem Teilzeitanteil kann der Bradford Factor leicht unterschätzt
+> werden, da Teilzeitkräfte weniger Planstunden haben.
+
+---
+
+## 2. Daten laden (Power Query)
+
+1. Power BI Desktop → **Daten abrufen → Ordner**
+2. Ordner mit den drei Land-CSVs auswählen
+3. Im **Erweiterten Editor** die Queries aus `PowerQuery_M_Code.pq` einfügen:
+   - `SickLeave_Data` (kombiniert alle Land-CSVs automatisch)
+   - `TargetHours`
+   - `Benchmark`
+   - `DimDate`
+4. **Pfad anpassen:** Alle Vorkommen von `C:\DeinPfad\Sick-Leave-Dashboard` ersetzen
+5. Schließen & Anwenden
+
+**Bekannte Datenauffälligkeit:** Land 3 H1 2025 enthält `Date = 30.06.2026` (Quelldatenfehler). Die Year/Period-Spalten (2025/H1) sind korrekt und werden für alle Berechnungen verwendet. Das Datumsfeld wird nur zur Referenz gespeichert.
+
+---
+
+## 3. Datenmodell konfigurieren
 
 1. **Modellansicht** öffnen
-2. Beziehungen gemäß Diagramm oben erstellen
-3. Sternschema prüfen – SickLeave_Data in der Mitte
-
-### 3. Measures anlegen
-
-1. Neue Tabelle erstellen: **Modellierung → Neue Tabelle → `Measures = {}`**
-2. Alle Measures aus `DAX_Measures.dax` einzeln als **Neues Measure** einfügen
-3. Measures in Anzeigeordner gruppieren (KPI, Rate, Benchmark, YoY)
+2. Beziehungen gemäß Diagramm oben ziehen
+3. Sternschema prüfen: `SickLeave_Data` in der Mitte
+4. Neue Tabelle für Measures anlegen:
+   ```
+   Modellierung → Neue Tabelle → Measures = {}
+   ```
+5. Alle Measures aus `DAX_Measures.dax` als **Neues Measure** in diese Tabelle einfügen
 
 ---
 
-## Dashboard-Layout (3 Report-Seiten)
+## 4. KPI-Definitionen
 
-### Seite 1: Übersicht (Executive Summary)
+### Sick Leave (%)
+```
+Sick Leave (%) = TotalAbsentHours / (HC × WorkingDays × DailyTargetHours)
+```
+- Zähler: Sick Leave + Care Leave + Doctor Appointment Hours
+- Nenner: Planstunden = HC × Arbeitstage × Tagesarbeitszeit (aus TargetHours)
+- Anzeige: Prozent mit 2 Nachkommastellen
+- Vergleich: Differenz in Prozentpunkten (pp) zum Vorjahr
+
+### Absent Days per Employee
+```
+Absent Days per Employee = TotalAbsentHours / (HC × DailyTargetHours)
+```
+- Alle drei Abwesenheitsarten
+- Ergebnis in Arbeitstagen
+
+### Missing HC / Day
+```
+Missing HC / Day = TotalAbsentHours / (WorkingDays × DailyTargetHours)
+```
+- Entspricht der Anzahl fehlender Vollzeitstellen (FTE) je Arbeitstag
+- Basiert auf Planstunden-Basis (nicht HC-Basis) → leichter Methodenwechsel beabsichtigt
+
+### Bradford Factor (Ø)
+```
+Bradford Factor = (Instances / HC)² × (TotalAbsentHours / DailyTargetHours / HC)
+```
+- Berechnung **je Dealership**, dann **Durchschnitt (Ø)** über den Filterkontext
+- **TC = HC** (Limitation, s. oben)
+- Ampelwerte: < 50 = Grün, 50–100 = Gelb, > 100 = Rot
+
+---
+
+## 5. Dashboard-Layout (2 Report-Seiten)
+
+### Seite 1: KPI-Übersicht
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  SLICER: Land  │  SLICER: Jahr  │  SLICER: Periode             │
-├────────┬────────┬────────┬────────┬────────────────────────────┤
-│  KPI   │  KPI   │  KPI   │  KPI   │                            │
-│ Krank- │Krank-  │Instanz │Bench-  │  Balkendiagramm            │
-│ quote  │tage/MA │  /HC   │mark Δ  │  Krankenquote je Land      │
-│        │        │        │        │  (mit Benchmark-Linie)     │
-├────────┴────────┴────────┴────────┤                            │
-│  Liniendiagramm                   ├────────────────────────────┤
-│  Krankenquote Trend über Zeit     │  Donut-Chart               │
-│  (H1/H2 nach Jahr)               │  Aufteilung Abwesenheits-  │
-│                                   │  arten (Krank/Pflege/Arzt) │
-└───────────────────────────────────┴────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│  FILTER-ZEILE (Dropdowns):                                           │
+│  Business Area  │  Year  │  Period                                   │
+├────────────┬────────────┬────────────┬──────────────────────────────┤
+│ KPI-Card   │ KPI-Card   │ KPI-Card   │                              │
+│            │            │            │  Missing HC / Day            │
+│ Sick Leave │ Absent Days│ Missing HC │  Development                 │
+│    (%)     │ per Employee│  / Day    │                              │
+│   5,57%    │   14,03    │   48,92    │  Gruppiertes Balkendiagramm  │
+│ ▼ -1,3pp   │ ▼ 0.0 vs.PY│▼ -10.0 vs.│  X-Achse: Year               │
+│   vs. PY   │            │     PY     │  Orange Balken: Avg HC       │
+│            │            │            │  Grauer Balken: Missing HC/D │
+├────────────┴────────────┴────────────┤  Datenbeschriftungen an      │
+│  Absent Days per Employee per Year   │  Balkenenende                │
+│                                      │                              │
+│  Horizontales Balkendiagramm         │                              │
+│  Balken 1 (orange): Absent Days/MA   │                              │
+│  Balken 2 (hellorange): Country Avg  │                              │
+│  Balken 3 (grau): Ø Region           │                              │
+└──────────────────────────────────────┴──────────────────────────────┘
 ```
 
-**Visuals im Detail:**
+**Visual-Konfiguration Seite 1:**
+
 | Visual | Typ | Felder |
 |--------|-----|--------|
-| Krankenquote | KPI-Card | `Sick Leave Rate %`, `YoY Change Label` |
-| Krankentage/MA | Card | `Absent Days per Employee` |
-| Instanzen/HC | Card | `Instances per HC` |
-| Benchmark Δ | Card | `Delta to Benchmark %` (bedingte Formatierung) |
-| Trend | Liniendiagramm | X: Year+Period, Y: `Sick Leave Rate %`, Legende: Country |
-| Je Land | Balken | Y: Country, X: `Sick Leave Rate %`, Linie: `Benchmark Days per Employee` |
-| Aufteilung | Donut | Werte: Sick/Care/Doctor Hours |
+| Sick Leave (%) | KPI-Card | Wert: `Sick Leave (%)`, Untertitel: `Sick Leave (%) vs PY Label` |
+| Absent Days/Employee | KPI-Card | Wert: `Absent Days per Employee`, Untertitel: `Absent Days per Employee vs PY Label` |
+| Missing HC / Day | KPI-Card | Wert: `Missing HC per Day`, Untertitel: `Missing HC per Day vs PY Label` |
+| Missing HC/Day Development | Gruppierter Balken | X: Year, Werte: `Average HC` + `Missing HC per Day`, Legende: Measurename |
+| Absent Days per Year | Horizontaler Balken | Y: Measurename, X: `Absent Days per Employee` + `Benchmark Days per Employee` + `Avg Region Days per Employee` |
+
+**Bedingte Formatierung KPI-Cards:**
+- Wert grün = besser als Vorjahr (negativer Δ)
+- Wert rot = schlechter als Vorjahr (positiver Δ)
+- Pfeile: ▼ grün (Verbesserung), ▲ rot (Verschlechterung)
 
 ---
 
-### Seite 2: Dealership-Analyse (Drill-Down)
+### Seite 2: Bradford Factor & Sick Leave Matrix
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│  SLICER: Land  │  SLICER: Region  │  SLICER: Jahr/Period     │
-├──────────────────────────────────────────────────────────────┤
-│  Treemap: Krankenquote je Dealership (Größe = HC, Farbe = %) │
-├────────────────────────────┬─────────────────────────────────┤
-│  Tabelle: Top/Bottom 5     │  Streudiagramm                  │
-│  Dealerships nach          │  X: Instances/HC                │
-│  Krankenquote              │  Y: Sick Leave Rate %           │
-│                            │  Größe: HC                      │
-│                            │  Farbe: Country                 │
-└────────────────────────────┴─────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│  FILTER-ZEILE (Dropdowns):                                           │
+│  Business Area  │  Year  │  Period  │  [Legende: Ampelwerte]        │
+├──────────────────────────────────────────────────────────────────────┤
+│  Matrix-Tabelle: Bradford Factor                                     │
+│                                                                      │
+│  Zeile 1: Business Area (aufklappbar)                                │
+│  Zeile 2: Region (aufklappbar)                                       │
+│  Zeile 3: Country                                                    │
+│  Zeile 4: Dealership                                                 │
+│                                                                      │
+│  Spalten: Sum of HC | Sick Leave (%) | Bradford Factor (Ø)           │
+│                                                                      │
+│  Bedingte Formatierung:                                              │
+│  - Sick Leave (%): Grün < 3% | Gelb 3–10% | Rot > 10%              │
+│  - Bradford Factor (Ø): Grün < 50 | Gelb 50–100 | Rot > 100         │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-**Bedingte Formatierung (Tabelle):**
-- Krankenquote: Farbskala Grün (0%) → Rot (>10%)
-- Bradford Factor: Ampel-Icons (grün/gelb/rot)
+**Matrix-Konfiguration:**
+
+| Einstellung | Wert |
+|-------------|------|
+| Zeilen | Area → Region → Country → Dealership |
+| Werte | `Total HC`, `Sick Leave (%)`, `Bradford Factor (Ø)` |
+| Zeilensummen | Aktiviert (Gesamtzeile unten) |
+| Teilergebnisse | Aktiviert auf allen Ebenen |
+
+**Bedingte Formatierung (Hintergrundfarbe per Measure):**
+
+Sick Leave (%) → Regeln:
+- Wenn Wert < 0,03 → Hintergrund `#00B050` (Grün), Schrift `#FFFFFF`
+- Wenn Wert ≥ 0,03 und ≤ 0,10 → Hintergrund `#FFC000` (Gelb), Schrift `#000000`
+- Wenn Wert > 0,10 → Hintergrund `#FF0000` (Rot), Schrift `#FFFFFF`
+
+Bradford Factor (Ø) → Regeln:
+- Wenn Wert < 50 → kein Hintergrund (weiß)
+- Wenn Wert ≥ 50 und ≤ 100 → Hintergrund `#FFC000` (Gelb)
+- Wenn Wert > 100 → Hintergrund `#FF0000` (Rot), Schrift `#FFFFFF`
 
 ---
 
-### Seite 3: Benchmark & Zeitvergleich
+## 6. Farbschema
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Bullet-Chart oder gruppiertes Balkendiagramm               │
-│  Krankentage/MA vs. Benchmark je Land und Jahr              │
-├──────────────────────────┬──────────────────────────────────┤
-│  H1 vs. H2 Vergleich     │  YoY Entwicklung                 │
-│  Gestapelter Balken       │  Wasserfall-Chart               │
-│  nach Period             │  Veränderung Krankenquote        │
-└──────────────────────────┴──────────────────────────────────┘
-```
-
----
-
-## Formatierungsempfehlungen
-
-### Farbschema
-| Element | Farbe (Hex) |
-|---------|-------------|
-| Land 1 | `#0070C0` (Blau) |
-| Land 2 | `#00B050` (Grün) |
-| Land 3 | `#FF6600` (Orange) |
-| Benchmark-Linie | `#FF0000` (Rot, gestrichelt) |
-| Hintergrund | `#F5F5F5` (Hellgrau) |
-| KPI positiv | `#00B050` |
-| KPI negativ | `#FF0000` |
-
-### Bedingte Formatierung für Krankenquote
-```
-< 4%   → Grün   (#00B050)
-4–7%   → Gelb   (#FFC000)
-> 7%   → Rot    (#FF0000)
-```
+| Element | Farbe | Hex |
+|---------|-------|-----|
+| Hauptfarbe / Average HC | Orange | `#FF6600` |
+| Missing HC / Day | Grau | `#808080` |
+| Country Average (Benchmark) | Hellorange | `#FFAA44` |
+| Ø Region | Dunkelgrau | `#555555` |
+| Grün (gut) | | `#00B050` |
+| Gelb (mittel) | | `#FFC000` |
+| Rot (schlecht) | | `#FF0000` |
+| Hintergrund | Hellgrau | `#F5F5F5` |
 
 ---
 
-## Wichtige Filter-Interaktionen
+## 7. Slicer-Konfiguration
 
-1. **Land-Slicer** filtert alle Visuals auf Seite 1 & 2 gleichzeitig
-2. **Benchmark-Linie** zeigt immer den Länderdurchschnitt, nicht gefiltert nach Dealership
-3. **Kreuzfilterung** zwischen Treemap und Tabelle auf Seite 2 aktivieren
+| Slicer | Feld | Typ | Standard |
+|--------|------|-----|---------|
+| Business Area | `SickLeave_Data[Area]` | Dropdown | EH |
+| Year | `SickLeave_Data[Year]` | Dropdown | Aktuelles Jahr |
+| Period | `SickLeave_Data[Period]` | Dropdown | Mehrfachauswahl |
 
----
-
-## Häufige Kennzahlen-Definitionen
-
-| Kennzahl | Formel |
-|----------|--------|
-| Krankenquote | Abwesenheitsstunden / (HC × Arbeitstage × Tagesarbeitszeit) |
-| Krankentage/MA | Abwesenheitsstunden / (HC × Tagesarbeitszeit) |
-| Instanzen/HC | Instanzen / Anzahl Mitarbeiter |
-| Bradford Factor | Instanzen² × Krankentage / HC |
-| Benchmark Δ | Krankentage/MA − Länder-Benchmark |
+**Wichtig:** Slicer auf Seite 1 und Seite 2 synchronisieren:
+Ansicht → Slicer synchronisieren → alle Seiten aktivieren
 
 ---
 
-## Bekannte Datenlimits
+## 8. Bekannte Einschränkungen
 
-- `Doctor Appointment Hours` in den Quelldaten oft leer → wird als 0 behandelt
-- `Instances` in Land 1 teilweise leer → ebenfalls als 0 behandelt
-- Benchmark-Datei enthält noch **Land 4** (kein eigenes CSV) → Benchmark-Measure berücksichtigt das
-- Datums-Spalte in den CSVs zeigt `31.12.2025` für H1 2026 → DimDate über Year+Period verknüpfen, nicht über Date
+1. **TC = HC:** Der Bradford Factor und alle HC-basierten KPIs verwenden HC als Proxy für TC (Teilzeit-korrigierter Headcount), da kein TC in den Quelldaten vorliegt.
+
+2. **Datumsfehler Land 3:** H1 2025-Daten tragen `Date = 30.06.2026`. Year/Period-Spalten sind korrekt und werden für alle Berechnungen genutzt. Eine DimDate-Verknüpfung über `Date` kann für diese Zeilen inkonsistent sein.
+
+3. **Doctor Appointment Hours:** In einigen Dealerships leer → wird als 0 behandelt.
+
+4. **Benchmark nur auf Country-Ebene:** Der Benchmark-Wert wird auf Dealership-Ebene unverändert angezeigt (kein Dealership-spezifischer Benchmark verfügbar).
+
+5. **Vorjahresvergleich erfordert Einzel-Slicer-Auswahl:** Die PY-Measures funktionieren nur korrekt, wenn im Year-Slicer genau ein Jahr ausgewählt ist.
