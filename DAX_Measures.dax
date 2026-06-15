@@ -1,0 +1,205 @@
+// ============================================================
+// DAX MEASURES - Sick Leave Dashboard
+// Tabelle "Measures" erstellen und alle Measures dort ablegen
+// ============================================================
+
+
+// ============================================================
+// BASIS-KENNZAHLEN
+// ============================================================
+
+Total Sick Leave Hours =
+SUM(SickLeave_Data[SickLeaveHours])
+
+Total Care Leave Hours =
+SUM(SickLeave_Data[CareLeaveHours])
+
+Total Doctor Appointment Hours =
+SUM(SickLeave_Data[DoctorAppointmentHours])
+
+Total Absent Hours =
+SUM(SickLeave_Data[TotalAbsentHours])
+
+Total Instances =
+SUM(SickLeave_Data[Instances])
+
+Total HC =
+SUM(SickLeave_Data[HC])
+
+// Planstunden aus TargetHours (verknüpft über Country / Year / Period)
+Total Target Hours =
+SUMX(
+    SickLeave_Data,
+    RELATED(TargetHours[PeriodTargetHours]) * SickLeave_Data[HC]
+)
+
+
+// ============================================================
+// KRANKENQUOTE (Sick Leave Rate)
+// ============================================================
+
+// Sick Leave Rate gesamt (alle Abwesenheitsarten)
+Sick Leave Rate % =
+DIVIDE(
+    [Total Absent Hours],
+    [Total Target Hours],
+    0
+)
+
+// Nur Krankenstand (ohne Pflegeurlaub & Arzttermin)
+Sick Leave Rate % (Pure) =
+DIVIDE(
+    [Total Sick Leave Hours],
+    [Total Target Hours],
+    0
+)
+
+// Care Leave Rate
+Care Leave Rate % =
+DIVIDE(
+    [Total Care Leave Hours],
+    [Total Target Hours],
+    0
+)
+
+// Doctor Appointment Rate
+Doctor Appointment Rate % =
+DIVIDE(
+    [Total Doctor Appointment Hours],
+    [Total Target Hours],
+    0
+)
+
+
+// ============================================================
+// KRANKENTAGE JE MITARBEITER
+// ============================================================
+
+Working Days per Period =
+AVERAGE(TargetHours[Working Days])
+
+Daily Target Hours =
+AVERAGE(TargetHours[Daily Target Hours])
+
+// Abwesenheitstage je MA (alle Arten)
+Absent Days per Employee =
+DIVIDE(
+    [Total Absent Hours],
+    DIVIDE([Total HC], DISTINCTCOUNT(SickLeave_Data[Period])) *
+        AVERAGE(TargetHours[Daily Target Hours]),
+    0
+)
+
+// Krankentage je MA (nur Sick Leave)
+Sick Days per Employee =
+DIVIDE(
+    [Total Sick Leave Hours],
+    [Total HC] * AVERAGE(TargetHours[Daily Target Hours]),
+    0
+)
+
+
+// ============================================================
+// INSTANZEN / BRADFORD FACTOR
+// ============================================================
+
+Instances per HC =
+DIVIDE([Total Instances], [Total HC], 0)
+
+// Bradford Factor = Instanzen² × Krankentage
+Bradford Factor =
+VAR _inst   = [Total Instances]
+VAR _days   = [Absent Days per Employee]
+RETURN
+    DIVIDE(_inst * _inst * _days, [Total HC], 0)
+
+
+// ============================================================
+// BENCHMARK-VERGLEICH
+// ============================================================
+
+Benchmark Days per Employee =
+AVERAGE(Benchmark[BenchmarkDaysPerEmployee])
+
+// Differenz zum Benchmark (positiv = schlechter als Benchmark)
+Delta to Benchmark =
+[Absent Days per Employee] - [Benchmark Days per Employee]
+
+Delta to Benchmark % =
+DIVIDE([Delta to Benchmark], [Benchmark Days per Employee], 0)
+
+// Ampelindikator: 1 = grün, 0 = gelb, -1 = rot
+Benchmark Traffic Light =
+VAR _delta = [Delta to Benchmark %]
+RETURN
+    SWITCH(
+        TRUE(),
+        _delta <= 0,       1,   -- besser als Benchmark → grün
+        _delta <= 0.15,    0,   -- bis 15% schlechter → gelb
+        -1                       -- mehr als 15% schlechter → rot
+    )
+
+
+// ============================================================
+// VORJAHRESVERGLEICH (Year-over-Year)
+// ============================================================
+
+Sick Leave Rate % PY =
+CALCULATE(
+    [Sick Leave Rate %],
+    SAMEPERIODLASTYEAR(DimDate[Date])
+)
+
+YoY Change % =
+DIVIDE(
+    [Sick Leave Rate %] - [Sick Leave Rate % PY],
+    [Sick Leave Rate % PY],
+    BLANK()
+)
+
+YoY Change Label =
+VAR _yoy = [YoY Change %]
+RETURN
+    IF(
+        ISBLANK(_yoy),
+        "n/a",
+        IF(_yoy > 0,
+            "▲ " & FORMAT(ABS(_yoy), "0.0%"),
+            "▼ " & FORMAT(ABS(_yoy), "0.0%")
+        )
+    )
+
+
+// ============================================================
+// H1 / H2 SPLIT
+// ============================================================
+
+Sick Leave Rate % H1 =
+CALCULATE(
+    [Sick Leave Rate %],
+    SickLeave_Data[Period] = "H1"
+)
+
+Sick Leave Rate % H2 =
+CALCULATE(
+    [Sick Leave Rate %],
+    SickLeave_Data[Period] = "H2"
+)
+
+
+// ============================================================
+// TITEL / KONTEXTANZEIGE (für Card-Visuals)
+// ============================================================
+
+Selected Country =
+IF(
+    ISFILTERED(SickLeave_Data[Country]),
+    SELECTEDVALUE(SickLeave_Data[Country], "Mehrere Länder"),
+    "Alle Länder"
+)
+
+Selected Period Label =
+VAR _year   = SELECTEDVALUE(SickLeave_Data[Year], "Alle Jahre")
+VAR _period = SELECTEDVALUE(SickLeave_Data[Period], "Alle Perioden")
+RETURN
+    _year & " " & _period
