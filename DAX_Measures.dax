@@ -41,11 +41,17 @@ Total HC =
 SUM(SickLeave_Data[HC])
 
 // Planstunden gesamt = HC je Dealer × WorkingDays × DailyTargetHours
-// Benötigt aktive Beziehung SickLeave_Data → TargetHours
+// LOOKUPVALUE statt RELATED, da Composite Key (Country+Year+Period) nötig
 Total Target Hours =
 SUMX(
     SickLeave_Data,
-    SickLeave_Data[HC] * RELATED(TargetHours[TargetHoursPerHC])
+    SickLeave_Data[HC] *
+    LOOKUPVALUE(
+        TargetHours[TargetHoursPerHC],
+        TargetHours[Country], SickLeave_Data[Country],
+        TargetHours[Year],    SickLeave_Data[Year],
+        TargetHours[Period],  SickLeave_Data[Period]
+    )
 )
 
 // Arbeitstage im aktuellen Filterkontext (pro Land + Period)
@@ -252,13 +258,18 @@ AVERAGE(SickLeave_Data[HC])
 Bradford Factor (Ø) =
 AVERAGEX(
     SickLeave_Data,
-    VAR _hc           = SickLeave_Data[HC]
-    VAR _instances    = SickLeave_Data[Instances]
-    VAR _absentHours  = SickLeave_Data[TotalAbsentHours]
-    VAR _dailyHours   = RELATED(TargetHours[Daily Target Hours])
-    VAR _absentDays   = DIVIDE(_absentHours, _dailyHours, 0)
-    VAR _instPerHC    = DIVIDE(_instances, _hc, 0)
-    VAR _daysPerHC    = DIVIDE(_absentDays, _hc, 0)
+    VAR _hc          = SickLeave_Data[HC]
+    VAR _instances   = SickLeave_Data[Instances]
+    VAR _absentHours = SickLeave_Data[TotalAbsentHours]
+    VAR _dailyHours  = LOOKUPVALUE(
+                           TargetHours[Daily Target Hours],
+                           TargetHours[Country], SickLeave_Data[Country],
+                           TargetHours[Year],    SickLeave_Data[Year],
+                           TargetHours[Period],  SickLeave_Data[Period]
+                       )
+    VAR _absentDays  = DIVIDE(_absentHours, _dailyHours, 0)
+    VAR _instPerHC   = DIVIDE(_instances, _hc, 0)
+    VAR _daysPerHC   = DIVIDE(_absentDays, _hc, 0)
     RETURN
         _instPerHC * _instPerHC * _daysPerHC
 )
