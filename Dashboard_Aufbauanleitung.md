@@ -51,8 +51,6 @@ Alle Beziehungen: **aktiv**, **einfache Filterrichtung** (TargetHours/Benchmark 
 4. **Pfad anpassen:** Alle Vorkommen von `C:\DeinPfad\Sick-Leave-Dashboard` ersetzen
 5. Schließen & Anwenden
 
-**Bekannte Datenauffälligkeit:** Land 3 H1 2025 enthält `Date = 30.06.2026` (Quelldatenfehler). Die Year/Period-Spalten (2025/H1) sind korrekt und werden für alle Berechnungen verwendet. Das Datumsfeld wird nur zur Referenz gespeichert.
-
 ---
 
 ## 3. Datenmodell konfigurieren
@@ -224,9 +222,7 @@ Ansicht → Slicer synchronisieren → alle Seiten aktivieren
 
 1. **TC = HC:** Der Bradford Factor und alle HC-basierten KPIs verwenden HC als Proxy für TC (Teilzeit-korrigierter Headcount), da kein TC in den Quelldaten vorliegt.
 
-2. **Datumsfehler Land 3:** H1 2025-Daten tragen `Date = 30.06.2026`. Year/Period-Spalten sind korrekt und werden für alle Berechnungen genutzt. Eine DimDate-Verknüpfung über `Date` kann für diese Zeilen inkonsistent sein.
-
-3. **Doctor Appointment Hours:** In einigen Dealerships leer → wird als 0 behandelt.
+2. **Doctor Appointment Hours:** In einigen Dealerships leer → wird als 0 behandelt.
 
 4. **Benchmark nur auf Country-Ebene:** Der Benchmark-Wert wird auf Dealership-Ebene unverändert angezeigt (kein Dealership-spezifischer Benchmark verfügbar).
 
